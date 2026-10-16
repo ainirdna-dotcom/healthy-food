@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Yummy Toddler: Healthy Bites!</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Quicksand:wght@500;700&display=swap');
+
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Fredoka', cursive, sans-serif;
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+            overflow: hidden;
+        }
+
+        /* Cute wiggle animation */
+        @keyframes wiggle {
+            0%, 100% { transform: rotate(-3deg); }
+            50% { transform: rotate(3deg); }
+        }
+
+        .wiggle-hover:hover {
+            animation: wiggle 0.4s ease-in-out infinite;
+        }
+
+        @keyframes bounce-gentle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+
+        .bounce-gentle {
+            animation: bounce-gentle 2s ease-in-out infinite;
+        }
+
+        /* Glassmorphism card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 4px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+        }
+
+        .food-item {
+            cursor: grab;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            touch-action: none;
+        }
+
+        .food-item:active {
+            cursor: grabbing;
+            transform: scale(1.15) rotate(5deg);
+        }
+
+        /* Custom progress bar fill */
+        .meter-fill {
+            transition: width 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between items-center relative p-3 sm:p-6 overflow-hidden select-none">
+
+    <!-- Top HUD / Bar -->
+    <div class="w-full max-w-4xl flex justify-between items-center z-10 glass-card rounded-2xl px-4 py-2.5 shadow-md">
+        <!-- Score & Combo -->
+        <div class="flex items-center space-x-4">
+            <div class="bg-amber-100 border-2 border-amber-300 rounded-xl px-3 py-1 text-center">
+                <span class="text-xs text-amber-700 uppercase font-bold block">Score</span>
+                <span id="scoreText" class="text-2xl font-bold text-amber-600">0</span>
+            </div>
+            <div id="comboBadge" class="bg-pink-100 border-2 border-pink-300 rounded-xl px-3 py-1 text-center opacity-0 transition-opacity">
+                <span class="text-xs text-pink-700 uppercase font-bold block">Combo</span>
+                <span id="comboText" class="text-xl font-bold text-pink-500">2x</span>
+            </div>
+        </div>
+
+        <!-- Timer / Level -->
+        <div class="text-center">
+            <div id="levelBadge" class="text-xs bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full inline-block mb-0.5">LEVEL 1</div>
+            <div class="flex items-center space-x-1 justify-center">
+                <i class="fa-solid fa-stopwatch text-purple-500 text-lg"></i>
+                <span id="timerText" class="text-2xl font-bold text-slate-700">60s</span>
+            </div>
+        </div>
+
+        <!-- Nutrition Bar -->
+        <div class="w-1/3 max-w-[200px]">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-emerald-700 flex items-center">
+                    <i class="fa-solid fa-heart-pulse mr-1 text-pink-500"></i> Fullness
+                </span>
+                <span id="nutritionPct" class="text-xs font-bold text-emerald-800">0%</span>
+            </div>
+            <div class="w-full bg-slate-200 rounded-full h-4 border-2 border-white shadow-inner overflow-hidden">
+                <div id="nutritionBar" class="meter-fill h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full w-0"></div>
+            </div>
+        </div>
+
+        <!-- Audio Toggle -->
+        <button id="audioToggleBtn" class="w-10 h-10 rounded-xl bg-slate-100 border-2 border-slate-200 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition">
+            <i class="fa-solid fa-volume-high text-lg"></i>
+        </button>
+    </div>
+
+    <!-- Central Character & Animation Area -->
+    <div class="relative w-full flex-1 flex flex-col items-center justify-center my-2 max-w-2xl">
+        
+        <!-- Speech Bubble -->
+        <div id="speechBubble" class="absolute -top-4 sm:top-2 glass-card bg-white px-4 py-2 rounded-2xl border-2 border-pink-300 shadow-lg text-slate-700 font-bold text-sm sm:text-base flex items-center space-x-2 transition-all duration-300 transform scale-95 opacity-0 z-20">
+            <span id="speechText">Feed me healthy food! Yummy! 🍎</span>
+        </div>
+
+        <!-- Canvas Stage for Child Character -->
+        <div class="relative w-full max-w-[420px] h-[340px] sm:h-[400px] flex items-center justify-center">
+            <canvas id="childCanvas" width="450" height="420" class="w-full h-full"></canvas>
+            
+            <!-- Drop Target Zone overlay over the mouth -->
+            <div id="mouthDropZone" class="absolute w-24 h-24 rounded-full border-2 border-dashed border-pink-400/30 flex items-center justify-center pointer-events-none" style="top: 48%; left: 50%; transform: translate(-50%, -50%);"></div>
+        </div>
+    </div>
+
+    <!-- Bottom Conveyor / Food Selector Shelf -->
+    <div class="w-full max-w-4xl z-10">
+        <div class="glass-card rounded-2xl p-3 sm:p-4 border-2 border-white shadow-xl relative">
+            <div class="text-center text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider flex items-center justify-center space-x-2">
+                <i class="fa-solid fa-hand-pointer text-pink-400"></i>
+                <span>Drag Healthy Snacks to Feed!</span>
+            </div>
+            
+            <!-- Conveyor Belt Tray -->
+            <div id="foodTray" class="flex items-center justify-around space-x-2 sm:space-x-4 min-h-[90px] px-2 overflow-x-auto py-1">
+                <!-- Food items dynamically injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Overlay Screen -->
+    <div id="startModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+        <div class="glass-card max-w-md w-full rounded-3xl p-6 text-center border-4 border-pink-300 shadow-2xl relative overflow-hidden">
+            <div class="w-20 h-20 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-pink-300 text-4xl bounce-gentle">
+                👶
+            </div>
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">Yummy Toddler!</h1>
+            <p class="text-slate-600 text-sm mb-6 font-medium">
+                Feed cute baby <span class="text-emerald-600 font-bold">HEALTHY FOODS</span> like fruits & veggies! 🍎🥦<br/>
+                He will <span class="text-pink-600 font-bold">REJECT</span> junk food like burgers & candy! 🍩🍔
+            </p>
+
+            <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3 text-left mb-6 text-xs text-amber-800 space-y-1.5">
+                <div class="flex items-center space-x-2">
+                    <span class="text-base">🟢</span>
+                    <span><strong>Healthy (YUM!):</strong> Apples, Carrots, Broccoli, Bananas, Milk, Avocados</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-base">🔴</span>
+                    <span><strong>Unhealthy (YUCK!):</strong> Donuts, Fries, Burgers, Sodas, Ice Cream</span>
+                </div>
+            </div>
+
+            <button id="startGameBtn" class="w-full py-4 bg-gradient-to-r from-emerald-400 to-teal-500 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-lg rounded-2xl shadow-lg shadow-emerald-500/30 transform active:scale-95 transition wiggle-hover">
+                START FEEDING! <i class="fa-solid fa-heart ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Over / Nutrition Summary Modal -->
+    <div id="summaryModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md hidden">
+        <div class="glass-card max-w-lg w-full rounded-3xl p-6 text-center border-4 border-emerald-300 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <div class="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-2 text-3xl">
+                🏆
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800 mb-1">FEEDING TIME COMPLETE!</h2>
+            <p id="summarySubtitle" class="text-xs text-slate-500 mb-4">Great job keeping the toddler super healthy!</p>
+
+            <!-- Stats grid -->
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
+                    <div class="text-xs text-emerald-600 font-bold">Score</div>
+                    <div id="finalScore" class="text-xl font-bold text-emerald-700">0</div>
+                </div>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-2">
+                    <div class="text-xs text-amber-600 font-bold">Fed Healthy</div>
+                    <div id="finalFed" class="text-xl font-bold text-amber-700">0</div>
+                </div>
+                <div class="bg-pink-50 border border-pink-200 rounded-xl p-2">
+                    <div class="text-xs text-pink-600 font-bold">Junk Rejected</div>
+                    <div id="finalRejected" class="text-xl font-bold text-pink-700">0</div>
+                </div>
+            </div>
+
+            <!-- Encyclopedia / Fun facts section -->
+            <div class="bg-white/80 border-2 border-slate-200 rounded-2xl p-3 text-left mb-5">
+                <h3 class="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2 flex items-center">
+                    <i class="fa-solid fa-book-open text-teal-500 mr-2"></i> Healthy Food Encyclopedia
+                </h3>
+                <div id="factList" class="space-y-2 text-xs text-slate-600 max-h-40 overflow-y-auto pr-1">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <button id="restartGameBtn" class="w-full py-3.5 bg-gradient-to-r from-pink-400 to-rose-500 hover:from-pink-500 hover:to-rose-600 text-white font-bold text-base rounded-2xl shadow-lg shadow-pink-500/30 transform active:scale-95 transition">
+                PLAY AGAIN <i class="fa-solid fa-rotate-right ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Dragged Food Ghost -->
+    <div id="dragGhost" class="fixed pointer-events-none z-40 hidden text-5xl transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75"></div>
+
+    <script>
+        class SoundSynth {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playHappyEat() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Double crunch chime
+                [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+                    gain.gain.setValueAtTime(0.12, now + idx * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.06);
+                    osc.stop(now + idx * 0.06 + 0.12);
+                });
+            }
+
+            playRejectYuck() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                // Funny sliding boing sound
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.3);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            }
+
+            playWinChime() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                [440, 554.37, 659.25, 880].forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.15, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.25);
+                });
+            }
+        }
+
+        const sound = new SoundSynth();
+
+        const FOOD_DATABASE = [
+            // Healthy Items
+            { id: 'apple', name: 'Apple', emoji: '🍎', healthy: true, fact: 'Apples are full of fiber and help keep teeth clean and strong!' },
+            { id: 'broccoli', name: 'Broccoli', emoji: '🥦', healthy: true, fact: 'Broccoli looks like tiny green trees and is rich in Vitamin C!' },
+            { id: 'banana', name: 'Banana', emoji: '🍌', healthy: true, fact: 'Bananas give tons of healthy energy and potassium for playing!' },
+            { id: 'carrot', name: 'Carrot', emoji: '🥕', healthy: true, fact: 'Carrots have Vitamin A which gives you super sharp night vision!' },
+            { id: 'strawberry', name: 'Strawberry', emoji: '🍓', healthy: true, fact: 'Strawberries are sweet, juicy berries packed with antioxidants!' },
+            { id: 'watermelon', name: 'Watermelon', emoji: '🍉', healthy: true, fact: 'Watermelon is 92% water, keeping you cool and hydrated!' },
+            { id: 'avocado', name: 'Avocado', emoji: '🥑', healthy: true, fact: 'Avocados contain healthy fats that help your brain grow big!' },
+            { id: 'milk', name: 'Milk', emoji: '🥛', healthy: true, fact: 'Milk gives you calcium for extra strong bones and teeth!' },
+            { id: 'egg', name: 'Egg', emoji: '🥚', healthy: true, fact: 'Eggs are packed with protein to build strong muscle power!' },
+
+            // Unhealthy Items
+            { id: 'donut', name: 'Donut', emoji: '🍩', healthy: false },
+            { id: 'burger', name: 'Burger', emoji: '🍔', healthy: false },
+            { id: 'fries', name: 'Fries', emoji: '🍟', healthy: false },
+            { id: 'candy', name: 'Candy', emoji: '🍬', healthy: false },
+            { id: 'soda', name: 'Soda', emoji: '🥤', healthy: false },
+            { id: 'pizza', name: 'Pizza', emoji: '🍕', healthy: false },
+            { id: 'chips', name: 'Chips', emoji: '🍿', healthy: false },
+            { id: 'icecream', name: 'Ice Cream', emoji: '🍦', healthy: false }
+        ];
+
+        let gameState = {
+            active: false,
+            score: 0,
+            combo: 0,
+            nutrition: 0,
+            timeLeft: 60,
+            timerInterval: null,
+            fedHealthyCount: 0,
+            rejectedJunkCount: 0,
+            fedItemsHistory: new Set(),
+            characterState: 'NEUTRAL', // NEUTRAL, EATING_HAPPY, REJECTING, MOUTH_OPEN
+            stateTimer: 0,
+            headShakeOffset: 0,
+            chewYOffset: 0
+        };
+
+        // Canvas setup
+        const canvas = document.getElementById('childCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function drawChildCharacter() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const centerX = canvas.width / 2 + gameState.headShakeOffset;
+            const centerY = canvas.height / 2 + 30 + gameState.chewYOffset;
+
+            // 1. Background soft radial glow behind child
+            const glow = ctx.createRadialGradient(centerX, centerY - 20, 20, centerX, centerY - 20, 180);
+            glow.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+            glow.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY - 20, 180, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 2. Cute Baby Body / Bib
+            ctx.fillStyle = '#67e8f9'; // Pastel Cyan Shirt
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY + 130, 85, 70, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Bib
+            ctx.fillStyle = '#fef08a'; // Yellow Bib
+            ctx.beginPath();
+            ctx.arc(centerX, centerY + 80, 55, 0, Math.PI, false);
+            ctx.fill();
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Cute Bib Heart Motif
+            ctx.fillStyle = '#f43f5e';
+            ctx.font = '22px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('❤️', centerX, centerY + 115);
+
+            // 3. Head & Ears
+            // Ears
+            ctx.fillStyle = '#fbcfe8'; // Skin tone
+            ctx.beginPath();
+            ctx.arc(centerX - 95, centerY - 20, 20, 0, Math.PI * 2); // Left ear
+            ctx.arc(centerX + 95, centerY - 20, 20, 0, Math.PI * 2); // Right ear
+            ctx.fill();
+
+            // Main Face Head Circle
+            ctx.fillStyle = '#fde2e4'; // Soft rosy blush skin tone
+            ctx.beginPath();
+            ctx.arc(centerX, centerY - 20, 95, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#fbcfe8';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+
+            // Baby Hair Tuft
+            ctx.fillStyle = '#b45309';
+            ctx.beginPath();
+            ctx.moveTo(centerX - 15, centerY - 110);
+            ctx.quadraticCurveTo(centerX, centerY - 140, centerX + 15, centerY - 110);
+            ctx.quadraticCurveTo(centerX + 25, centerY - 130, centerX + 35, centerY - 105);
+            ctx.quadraticCurveTo(centerX, centerY - 115, centerX - 15, centerY - 110);
+            ctx.fill();
+
+            // Rosy Cheeks
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+            ctx.beginPath();
+            ctx.arc(centerX - 55, centerY + 5, 18, 0, Math.PI * 2);
+            ctx.arc(centerX + 55, centerY + 5, 18, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 4. Eyes Animation based on state
+            ctx.fillStyle = '#1e293b';
+            if (gameState.characterState === 'EATING_HAPPY') {
+                // Happy squint eyes ( ^ ^ )
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 6;
+                ctx.lineCap = 'round';
+
+                ctx.beginPath();
+                ctx.arc(centerX - 40, centerY - 30, 16, Math.PI, 0);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(centerX + 40, centerY - 30, 16, Math.PI, 0);
+                ctx.stroke();
+            } else if (gameState.characterState === 'REJECTING') {
+                // Squinting disgusted eyes (> <)
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 6;
+                ctx.lineCap = 'round';
+
+                // Left X
+                ctx.beginPath();
+                ctx.moveTo(centerX - 50, centerY - 40); ctx.lineTo(centerX - 30, centerY - 20);
+                ctx.moveTo(centerX - 30, centerY - 40); ctx.lineTo(centerX - 50, centerY - 20);
+                ctx.stroke();
+
+                // Right X
+                ctx.beginPath();
+                ctx.moveTo(centerX + 30, centerY - 40); ctx.lineTo(centerX + 50, centerY - 20);
+                ctx.moveTo(centerX + 50, centerY - 40); ctx.lineTo(centerX + 30, centerY - 20);
+                ctx.stroke();
+            } else {
+                // Big Sparkling Eyes
+                const blink = Math.sin(Date.now() / 400) > 0.96;
+                if (blink) {
+                    ctx.strokeStyle = '#1e293b';
+                    ctx.lineWidth = 5;
+                    ctx.beginPath();
+                    ctx.moveTo(centerX - 52, centerY - 30); ctx.lineTo(centerX - 28, centerY - 30);
+                    ctx.moveTo(centerX + 28, centerY - 30); ctx.lineTo(centerX + 52, centerY - 30);
+                    ctx.stroke();
+                } else {
+                    // Left Eye
+                    ctx.beginPath();
+                    ctx.arc(centerX - 40, centerY - 30, 18, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Right Eye
+                    ctx.beginPath();
+                    ctx.arc(centerX + 40, centerY - 30, 18, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Eye Catchlight Sparkles
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.arc(centerX - 45, centerY - 35, 6, 0, Math.PI * 2);
+                    ctx.arc(centerX + 35, centerY - 35, 6, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 5. Mouth Animation based on state
+            if (gameState.characterState === 'MOUTH_OPEN') {
+                // Big Open Excited Mouth
+                ctx.fillStyle = '#881337';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + 30, 32, 0, Math.PI, false);
+                ctx.fill();
+                // Tongue
+                ctx.fillStyle = '#f43f5e';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + 48, 16, Math.PI, 0);
+                ctx.fill();
+            } else if (gameState.characterState === 'EATING_HAPPY') {
+                // Chewing Wide Smile with teeth
+                ctx.fillStyle = '#be123c';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + 25, 28, 0, Math.PI, false);
+                ctx.fill();
+                // Two cute baby front teeth
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(centerX - 10, centerY + 25, 8, 8);
+                ctx.fillRect(centerX + 2, centerY + 25, 8, 8);
+            } else if (gameState.characterState === 'REJECTING') {
+                // Turned down Yuck / Wavy mouth
+                ctx.strokeStyle = '#9f1239';
+                ctx.lineWidth = 6;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(centerX - 30, centerY + 40);
+                ctx.quadraticCurveTo(centerX - 15, centerY + 20, centerX, centerY + 35);
+                ctx.quadraticCurveTo(centerX + 15, centerY + 50, centerX + 30, centerY + 30);
+                ctx.stroke();
+            } else {
+                // Neutral Sweet Smile
+                ctx.strokeStyle = '#9f1239';
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.arc(centerX, centerY + 20, 20, 0.2 * Math.PI, 0.8 * Math.PI);
+                ctx.stroke();
+            }
+
+            // Floating Sparkles/Hearts for Happy state
+            if (gameState.characterState === 'EATING_HAPPY') {
+                ctx.fillStyle = '#ec4899';
+                ctx.font = '24px sans-serif';
+                ctx.fillText('💖', centerX - 80 + Math.sin(Date.now() / 150) * 10, centerY - 60);
+                ctx.fillText('✨', centerX + 70 + Math.cos(Date.now() / 150) * 10, centerY - 50);
+            }
+        }
+
+        function animationLoop() {
+            // State timers & head shake dynamics
+            if (gameState.characterState === 'REJECTING') {
+                gameState.headShakeOffset = Math.sin(Date.now() / 30) * 12;
+            } else {
+                gameState.headShakeOffset = 0;
+            }
+
+            if (gameState.characterState === 'EATING_HAPPY') {
+                gameState.chewYOffset = Math.sin(Date.now() / 60) * 5;
+            } else {
+                gameState.chewYOffset = 0;
+            }
+
+            drawChildCharacter();
+            requestAnimationFrame(animationLoop);
+        }
+        requestAnimationFrame(animationLoop);
+
+        function refreshFoodTray() {
+            const tray = document.getElementById('foodTray');
+            tray.innerHTML = '';
+
+            // Shuffle available items ensuring a good mix of healthy and unhealthy
+            const shuffled = [...FOOD_DATABASE].sort(() => 0.5 - Math.random()).slice(0, 6);
+
+            shuffled.forEach((food) => {
+                const el = document.createElement('div');
+                el.className = `food-item flex flex-col items-center justify-center p-2 rounded-2xl bg-white border-2 ${food.healthy ? 'border-emerald-200 hover:border-emerald-400' : 'border-rose-200 hover:border-rose-400'} shadow-md hover:shadow-lg w-20 sm:w-24 h-20 sm:h-24 flex-shrink-0 relative select-none`;
+                el.dataset.id = food.id;
+                el.dataset.healthy = food.healthy;
+
+                el.innerHTML = `
+                    <span class="text-3xl sm:text-4xl mb-1 pointer-events-none transform transition-transform">${food.emoji}</span>
+                    <span class="text-[10px] sm:text-xs font-bold text-slate-600 pointer-events-none">${food.name}</span>
+                `;
+
+                // Drag Event Listeners
+                setupFoodDrag(el, food);
+                tray.appendChild(el);
+            });
+        }
+
+        const dragGhost = document.getElementById('dragGhost');
+        let activeDraggedFood = null;
+
+        function setupFoodDrag(element, foodData) {
+            const handleStart = (clientX, clientY) => {
+                if (!gameState.active) return;
+                activeDraggedFood = foodData;
+                dragGhost.textContent = foodData.emoji;
+                dragGhost.style.left = `${clientX}px`;
+                dragGhost.style.top = `${clientY}px`;
+                dragGhost.classList.remove('hidden');
+
+                showSpeechBubble(`Bring me ${foodData.name}! ${foodData.emoji}`, 'neutral');
+                gameState.characterState = 'MOUTH_OPEN';
+            };
+
+            const handleMove = (clientX, clientY) => {
+                if (!activeDraggedFood) return;
+                dragGhost.style.left = `${clientX}px`;
+                dragGhost.style.top = `${clientY}px`;
+
+                // Check proximity to mouth zone
+                const mouthZone = document.getElementById('mouthDropZone').getBoundingClientRect();
+                const dist = Math.hypot(
+                    clientX - (mouthZone.left + mouthZone.width / 2),
+                    clientY - (mouthZone.top + mouthZone.height / 2)
+                );
+
+                if (dist < 80) {
+                    gameState.characterState = 'MOUTH_OPEN';
+                }
+            };
+
+            const handleEnd = (clientX, clientY) => {
+                if (!activeDraggedFood) return;
+
+                const mouthZone = document.getElementById('mouthDropZone').getBoundingClientRect();
+                const dist = Math.hypot(
+                    clientX - (mouthZone.left + mouthZone.width / 2),
+                    clientY - (mouthZone.top + mouthZone.height / 2)
+                );
+
+                if (dist < 90) {
+                    // Feed Attempted!
+                    processFeeding(activeDraggedFood);
+                } else {
+                    gameState.characterState = 'NEUTRAL';
+                    hideSpeechBubble();
+                }
+
+                activeDraggedFood = null;
+                dragGhost.classList.add('hidden');
+            };
+
+            // Mouse Events
+            element.addEventListener('mousedown', (e) => {
+                handleStart(e.clientX, e.clientY);
+                const onMouseMove = (me) => handleMove(me.clientX, me.clientY);
+                const onMouseUp = (me) => {
+                    handleEnd(me.clientX, me.clientY);
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                };
+                window.addEventListener('mousemove', onMouseMove);
+                window.addEventListener('mouseup', onMouseUp);
+            });
+
+            // Touch Events
+            element.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                handleStart(touch.clientX, touch.clientY);
+
+                const onTouchMove = (te) => {
+                    const t = te.touches[0];
+                    handleMove(t.clientX, t.clientY);
+                };
+
+                const onTouchEnd = (te) => {
+                    const t = te.changedTouches[0];
+                    handleEnd(t.clientX, t.clientY);
+                    window.removeEventListener('touchmove', onTouchMove);
+                    window.removeEventListener('touchend', onTouchEnd);
+                };
+
+                window.addEventListener('touchmove', onTouchMove, { passive: true });
+                window.addEventListener('touchend', onTouchEnd);
+            });
+        }
+
+        function processFeeding(food) {
+            if (food.healthy) {
+                // ACCEPTED HEALTHY FOOD
+                sound.playHappyEat();
+                gameState.characterState = 'EATING_HAPPY';
+                gameState.score += 100 + (gameState.combo * 20);
+                gameState.combo++;
+                gameState.nutrition = Math.min(100, gameState.nutrition + 12);
+                gameState.fedHealthyCount++;
+                gameState.fedItemsHistory.add(food.id);
+
+                showSpeechBubble(`YUMMY! ${food.name} is so good! 😋`, 'happy');
+
+                setTimeout(() => {
+                    if (gameState.active) gameState.characterState = 'NEUTRAL';
+                }, 1200);
+
+            } else {
+                // REJECTED UNHEALTHY JUNK FOOD
+                sound.playRejectYuck();
+                gameState.characterState = 'REJECTING';
+                gameState.combo = 0;
+                gameState.rejectedJunkCount++;
+                gameState.score = Math.max(0, gameState.score - 50);
+
+                showSpeechBubble(`YUCK! No ${food.name}! I want healthy food! 🤮`, 'reject');
+
+                setTimeout(() => {
+                    if (gameState.active) gameState.characterState = 'NEUTRAL';
+                }, 1400);
+            }
+
+            updateHUD();
+            refreshFoodTray();
+        }
+
+        const speechBubble = document.getElementById('speechBubble');
+        const speechText = document.getElementById('speechText');
+        let bubbleTimeout = null;
+
+        function showSpeechBubble(msg, type = 'neutral') {
+            speechText.textContent = msg;
+            speechBubble.classList.remove('opacity-0', 'scale-95');
+            speechBubble.classList.add('opacity-100', 'scale-100');
+
+            if (type === 'happy') {
+                speechBubble.style.borderColor = '#4ade80';
+            } else if (type === 'reject') {
+                speechBubble.style.borderColor = '#f43f5e';
+            } else {
+                speechBubble.style.borderColor = '#f472b6';
+            }
+
+            clearTimeout(bubbleTimeout);
+            bubbleTimeout = setTimeout(() => hideSpeechBubble(), 2500);
+        }
+
+        function hideSpeechBubble() {
+            speechBubble.classList.add('opacity-0', 'scale-95');
+            speechBubble.classList.remove('opacity-100', 'scale-100');
+        }
+
+        function updateHUD() {
+            document.getElementById('scoreText').textContent = gameState.score;
+            
+            // Combo Badge
+            const comboBadge = document.getElementById('comboBadge');
+            if (gameState.combo > 1) {
+                document.getElementById('comboText').textContent = `${gameState.combo}x`;
+                comboBadge.classList.remove('opacity-0');
+            } else {
+                comboBadge.classList.add('opacity-0');
+            }
+
+            // Nutrition Bar
+            document.getElementById('nutritionPct').textContent = `${Math.floor(gameState.nutrition)}%`;
+            document.getElementById('nutritionBar').style.width = `${gameState.nutrition}%`;
+        }
+
+        function startGame() {
+            sound.init();
+            gameState = {
+                active: true,
+                score: 0,
+                combo: 0,
+                nutrition: 0,
+                timeLeft: 60,
+                timerInterval: null,
+                fedHealthyCount: 0,
+                rejectedJunkCount: 0,
+                fedItemsHistory: new Set(),
+                characterState: 'NEUTRAL',
+                stateTimer: 0,
+                headShakeOffset: 0,
+                chewYOffset: 0
+            };
+
+            document.getElementById('startModal').classList.add('hidden');
+            document.getElementById('summaryModal').classList.add('hidden');
+
+            updateHUD();
+            refreshFoodTray();
+
+            clearInterval(gameState.timerInterval);
+            gameState.timerInterval = setInterval(() => {
+                gameState.timeLeft--;
+                document.getElementById('timerText').textContent = `${gameState.timeLeft}s`;
+
+                if (gameState.timeLeft <= 0 || gameState.nutrition >= 100) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        function endGame() {
+            gameState.active = false;
+            clearInterval(gameState.timerInterval);
+            sound.playWinChime();
+
+            // Populate Summary Modal
+            document.getElementById('finalScore').textContent = gameState.score;
+            document.getElementById('finalFed').textContent = gameState.fedHealthyCount;
+            document.getElementById('finalRejected').textContent = gameState.rejectedJunkCount;
+
+            const factList = document.getElementById('factList');
+            factList.innerHTML = '';
+
+            if (gameState.fedItemsHistory.size === 0) {
+                factList.innerHTML = `<div class="text-slate-400 italic">No healthy food facts unlocked this round. Try feeding more fruits & veggies!</div>`;
+            } else {
+                gameState.fedItemsHistory.forEach(foodId => {
+                    const item = FOOD_DATABASE.find(f => f.id === foodId);
+                    if (item && item.fact) {
+                        const factEl = document.createElement('div');
+                        factEl.className = 'p-2 rounded-xl bg-emerald-50 border border-emerald-200 flex items-start space-x-2';
+                        factEl.innerHTML = `
+                            <span class="text-xl">${item.emoji}</span>
+                            <div>
+                                <span class="font-bold text-emerald-800">${item.name}:</span>
+                                <span>${item.fact}</span>
+                            </div>
+                        `;
+                        factList.appendChild(factEl);
+                    }
+                });
+            }
+
+            document.getElementById('summaryModal').classList.remove('hidden');
+        }
+
+        // Attach UI Button Handlers
+        document.getElementById('startGameBtn').addEventListener('click', startGame);
+        document.getElementById('restartGameBtn').addEventListener('click', startGame);
+        document.getElementById('audioToggleBtn').addEventListener('click', () => {
+            sound.muted = !sound.muted;
+            const icon = document.getElementById('audioToggleBtn').querySelector('i');
+            icon.className = sound.muted ? 'fa-solid fa-volume-xmark text-lg text-rose-500' : 'fa-solid fa-volume-high text-lg text-slate-600';
+        });
+    </script>
+</body>
+</html>
